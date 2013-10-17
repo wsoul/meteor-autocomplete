@@ -10,6 +10,13 @@
     {{> _autocompleteContainer ac}}
 </template>
 
+<template name="_contenteditableAutocomplete">
+    <div {{{attributes}}}>
+        {{{html}}}
+    </div>
+    {{> _autocompleteContainer ac}}
+</template>
+
 <template name="_autocompleteContainer">
     {{#if shown}}
     <div class='-autocomplete-container' style='position: absolute;'>

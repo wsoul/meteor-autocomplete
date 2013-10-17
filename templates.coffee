@@ -20,15 +20,22 @@ Handlebars.registerHelper "textareaAutocomplete", (settings, options) ->
     text: options.fn(this)
     ac: new AutoComplete(settings)
 
+Handlebars.registerHelper "contenteditableAutocomplete", (settings, text, options) ->
+  return new Handlebars.SafeString Template._contenteditableAutocomplete
+    attributes: buildAttributeString(options.hash)
+    html: text
+    ac: new AutoComplete(settings)
+
 # Events on template instances
 events =
   "keydown": (e, tmplInst) -> tmplInst.data.ac.onKeyDown(e)
   "keyup": (e, tmplInst) -> tmplInst.data.ac.onKeyUp(e)
-  "focus": (e, tmplInst) -> tmplInst.data.ac.onFocus(e)
+  "mouseup": (e, tmplInst) -> tmplInst.data.ac.onMouseup(e) unless $(e.target).closest('.-autocomplete-container').length
   "blur": (e, tmplInst) -> tmplInst.data.ac.onBlur(e)
 
 Template._inputAutocomplete.events = events
 Template._textareaAutocomplete.events = events
+Template._contenteditableAutocomplete.events = events
 
 # Set nodes on render
 init = ->
@@ -38,6 +45,7 @@ init = ->
 
 Template._inputAutocomplete.rendered = init
 Template._textareaAutocomplete.rendered = init
+Template._contenteditableAutocomplete.rendered = init
 
 ###
   List rendering helpers
@@ -45,23 +53,19 @@ Template._textareaAutocomplete.rendered = init
 Template._autocompleteContainer.rendered = ->
   showing = @data.ruleMatched()
 
-  if showing and not @showing
-    # First render; Pick the first item and set css whenever list gets shown
-    $(@find(".-autocomplete-container")).css(@data.getMenuPositioning())
+  if showing
+    if @data.tokenChanged or not @showing
+      # First render; Pick the first item and set css whenever list gets shown
+      $(@find(".-autocomplete-container")).css(@data.getMenuPositioning())
 
-    # Select something if there is anything in the list
-    # Shouldn't need to clear id on first render if list cleans up after itself properly
-    item = @find(".-autocomplete-item")
-    Session.set("-autocomplete-id", Spark.getDataContext(item)._id) if item
-  else if showing
     # Re-render; make sure selected item is something in the list or none if list empty
     selectedItem = @find(".-autocomplete-item.selected")
 
     # TODO: this logic will change once we fix the empty list thing
     unless selectedItem
-      newItem = @find(".-autocomplete-item") # Select anything
-      if newItem
-        Session.set("-autocomplete-id", Spark.getDataContext(newItem)._id)
+      item = @find(".-autocomplete-item") # Select anything
+      if item
+        Session.set("-autocomplete-id", Spark.getDataContext(item)._id)
       else
         Session.set("-autocomplete-id", null)
 
@@ -77,6 +81,7 @@ Template._autocompleteContainer.destroyed = -> Session.set("-autocomplete-id", "
 Template._autocompleteContainer.events =
   # tmplInst.data is the AutoComplete instance
   "click .-autocomplete-item": (e, tmplInst) -> tmplInst.data.onItemClick(this, e)
+  "mousedown .-autocomplete-item": (e, tmplInst) -> e.preventDefault() # TODO: rly need it for prevent losing focus?
   "mouseenter .-autocomplete-item": (e, tmplInst) -> tmplInst.data.onItemHover(this, e)
 
 Template._autocompleteContainer.shown = -> @ruleMatched() # TODO: and list isnt empty

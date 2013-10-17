@@ -14,9 +14,10 @@ class @AutoComplete
 
     @rules = settings.rules
     # Expressions compiled for range from last word break to current cursor position
-    @expressions = (new RegExp('(^|\\b|\\s)' + rule.token + '([\\w.]*)$') for rule in @rules)
+    @expressions = (new RegExp('(^|>|\\s)' + rule.token + '([\\w.]*)$') for rule in @rules)
 
     @matched = -1
+    @afterTokenPosition = 0
 
     # Reactive dependencies for current matching rule and filter
     @ruleDep = new Deps.Dependency
@@ -24,39 +25,49 @@ class @AutoComplete
     Session.set("-autocomplete-id", null); # Use this for Session.equals()
 
   onKeyUp: (e) ->
-    startpos = @$element.getCursorPosition() # TODO: this doesn't seem to be correct on a focus
-    val = @getText().substring(0, startpos)
+    if e.keyCode isnt 27
+      startpos = @getCursorPosition() #@$element.getCursorPosition() # TODO: this doesn't seem to be correct on a focus
+      val = @getText().substring(0, startpos)
+      @tokenChanged = false
 
-    ###
-      Matching on multiple expressions.
-      We always go from an matched state to an unmatched one
-      before going to a different matched one.
-    ###
-    i = 0
-    breakLoop = false
-    while i < @expressions.length
-      matches = val.match(@expressions[i])
+      ###
+        Matching on multiple expressions.
+        We always go from an matched state to an unmatched one
+        before going to a different matched one.
+      ###
+      i = 0
+      breakLoop = false
+      while i < @expressions.length
+        matches = val.match(@expressions[i])
 
-      # matching -> not matching
-      if not matches and @matched is i
-        @matched = -1
-        @ruleDep.changed()
-        breakLoop = true
+        # matching -> not matching
+        if not matches and @matched is i
+          @matched = -1
+          @ruleDep.changed()
+          breakLoop = true
 
-      # not matching -> matching
-      if matches and @matched is -1
-        @matched = i
-        @ruleDep.changed()
-        breakLoop = true
+        # not matching -> matching
+        if matches
+          afterTokenPosition = val.lastIndexOf(@rules[i].token) + 1
+          if @afterTokenPosition isnt afterTokenPosition
+            @afterTokenPosition = afterTokenPosition
+            @tokenChanged = true
+            @ruleDep.changed()
+            breakLoop = true
 
-      # Did filter change?
-      if matches and @filter isnt matches[2]
-        @filter = matches[2]
-        @filterDep.changed()
-        breakLoop = true
+          if @matched is -1
+            @matched = i
+            @ruleDep.changed()
+            breakLoop = true
 
-      break if breakLoop
-      i++
+          # Did filter change?
+          if @filter isnt matches[2]
+            @filter = matches[2]
+            @filterDep.changed()
+            breakLoop = true
+
+        break if breakLoop
+        i++
 
   onKeyDown: (e) =>
     return if @matched is -1 or (@constructor.KEYS.indexOf(e.keyCode) < 0)
@@ -73,7 +84,7 @@ class @AutoComplete
 
     e.preventDefault()
 
-  onFocus: -> @onKeyUp()
+  onMouseup: (e) -> @onKeyUp(e)
 
   onBlur: ->
     # We need to delay this so click events work
@@ -125,22 +136,33 @@ class @AutoComplete
 
   # Replace the appropriate region
   replace: (replacement) ->
-    startpos = @$element.getCursorPosition()
+    startpos = @getCursorPosition() # @$element.getCursorPosition()
     fullStuff = @getText()
     val = fullStuff.substring(0, startpos)
-    val = val.replace(@expressions[@matched], "$1" + @rules[@matched].token + replacement)
+
+    replacement = @rules[@matched].token + replacement
+    newClass = '-autocomplete-new-link'
+    link = '<a href="/search/' + encodeURIComponent(replacement) + '" class="' + newClass + '">' + replacement + '</a>'
+    val = val.replace(@expressions[@matched], "$1" + link)
     posfix = fullStuff.substring(startpos, fullStuff.length)
     separator = (if posfix.match(/^\s/) then "" else " ")
     finalFight = val + separator + posfix
     @setText finalFight
-    @$element.setCursorPosition val.length + 1
+    range = document.createRange()
+    range.setStartAfter(@$element.find('.' + newClass).removeClass(newClass).get(0))
+    sel = window.getSelection()
+    sel.removeAllRanges()
+    sel.addRange(range)
 
   hideList: ->
     @matched = -1
     @ruleDep.changed()
 
   getText: ->
-    return @$element.val() || @$element.text()
+    if @element.hasAttribute('contenteditable')
+      @$element.html()
+    else
+      @$element.val() || @$element.text()
 
   setText: (text) ->
     if @$element.is("input,textarea")
@@ -153,10 +175,10 @@ class @AutoComplete
   ###
   ruleMatched: ->
     @ruleDep.depend()
-    return @matched >= 0
+    @matched >= 0
 
   filteredList: ->
-    # @ruleDep.depend() # optional as long as we use filterDep, cause list will always get re-rendered
+    @ruleDep.depend() # optional as long as we use filterDep, cause list will always get re-rendered
     @filterDep.depend()
     return null if @matched is -1
 
@@ -174,17 +196,63 @@ class @AutoComplete
   currentTemplate: -> @rules[@matched].template
 
   getMenuPositioning: ->
-    position = @$element.position()
-    offset = @$element.getCaretPosition(@position)
+    html = @getText()
+    startOffset = window.getSelection().getRangeAt(0).startOffset
+
+    newHtml = [
+      html.slice(0, @afterTokenPosition)
+      '<span class="-autocomplete-after-token"></span>'
+      html.slice(@afterTokenPosition)
+    ].join('')
+
+    @$element.html(newHtml)
+    $afterToken = @$element.find('.-autocomplete-after-token')
+    position = $afterToken.position()
+
+    parentNode = $afterToken.get(0).parentNode
+    $afterToken.remove()
+    @element.normalize()
+    range = document.createRange()
+    range.setStart(parentNode.firstChild, startOffset)
+    sel = window.getSelection()
+    sel.removeAllRanges()
+    sel.addRange(range)
 
     if @position is "top"
       # Do some additional calculation to position menu from bottom
       return {
-        left: position.left + offset.left
-        bottom: @$element.offsetParent().height() - position.top + @$element.height() - offset.top
+        left: position.left
+        bottom: @$element.offsetParent().outerHeight() - position.top
       }
     else
       return {
-        left: position.left + offset.left
-        top: position.top + offset.top
+        left: position.left
+        top: position.top
       }
+
+  getCursorPosition: () ->
+    caretPosition = 0
+    if window.getSelection && window.getSelection().getRangeAt
+      range = window.getSelection().getRangeAt(0)
+      caretPosition = range.startOffset
+
+      container = range.startContainer
+      openTagLength = container.parentNode.outerHTML.indexOf(container.data)
+      if openTagLength > 0
+        caretPosition += openTagLength
+
+      currentNode = window.getSelection().focusNode
+      if currentNode isnt @element
+        loop
+          parentNode = currentNode.parentNode
+          childNodes = parentNode.childNodes
+          for i in [0..childNodes.length]
+            if childNodes[i] is currentNode
+              break
+            if childNodes[i].outerHTML
+              caretPosition += childNodes[i].outerHTML.length
+            else if childNodes[i].nodeType == 3
+              caretPosition += childNodes[i].textContent.length
+          currentNode = parentNode
+          break if parentNode is @element
+    caretPosition
