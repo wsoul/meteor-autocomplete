@@ -60,6 +60,7 @@ class @AutoComplete
 
             parentNode = selection.focusNode.parentNode
             if startpos is @afterTokenPosition and parentNode.nodeName.toLowerCase() isnt 'a'
+              @element.normalize()
               range = selection.getRangeAt(0)
               endOffset = range.startOffset + selection.focusNode.textContent.substring(range.startOffset).search(/($|\s)/)
               range.setStart(range.startContainer, range.startOffset - 1)
@@ -153,23 +154,15 @@ class @AutoComplete
 
   # Replace the appropriate region
   replace: (replacement) ->
-    startpos = @getCursorPosition() # @$element.getCursorPosition()
-    fullStuff = @getText()
-    val = fullStuff.substring(0, startpos)
-
-    replacement = @rules[@matched].token + replacement
-    newClass = '-autocomplete-new-link'
-    link = '<a href="/search/' + encodeURIComponent(replacement) + '" class="' + newClass + '">' + replacement + '</a>'
-    val = val.replace(@expressions[@matched], "$1" + link)
-    posfix = fullStuff.substring(startpos, fullStuff.length)
-    separator = (if posfix.match(/^\s/) then "" else " ")
-    finalFight = val + separator + posfix
-    @setText finalFight
-    range = document.createRange()
-    range.setStartAfter(@$element.find('.' + newClass).removeClass(newClass).get(0))
-    sel = window.getSelection()
-    sel.removeAllRanges()
-    sel.addRange(range)
+    selection = rangy.getSelection()
+    range = selection.getRangeAt(0)
+    link = range.startContainer.parentNode
+    if link.nodeName.toLowerCase() is 'a'
+      replacement = @rules[@matched].token + replacement
+      link.href = '/search/' + encodeURIComponent(replacement)
+      link.innerText = replacement
+      range.setStartAfter(link)
+      selection.setSingleRange(range)
 
   hideList: ->
     @matched = -1
@@ -250,7 +243,8 @@ class @AutoComplete
   getCursorPosition: () ->
     caretPosition = 0
     range = rangy.getSelection().getRangeAt(0)
-    caretPosition = range.startOffset
+    textContent = range.startContainer.textContent
+    caretPosition = range.startOffset + $('<span>').text(textContent).html().length - textContent.length
 
     currentNode = range.startContainer
     if currentNode isnt @element
