@@ -58,10 +58,10 @@ class @AutoComplete
               @ruleDep.changed()
               breakLoop = true
 
-            node = selection.focusNode.parentNode
-            if startpos is @afterTokenPosition and node.nodeName.toLowerCase() isnt 'a' # TODO: use rangy Range surroundContents
+            parentNode = selection.focusNode.parentNode
+            if startpos is @afterTokenPosition and parentNode.nodeName.toLowerCase() isnt 'a'
               range = selection.getRangeAt(0)
-              endOffset = range.startOffset + node.innerHTML.substring(range.startOffset).search(/($|\<|\\s)/)
+              endOffset = range.startOffset + selection.focusNode.textContent.substring(range.startOffset).search(/($|\\s)/)
               range.setStart(range.startContainer, range.startOffset - 1)
               range.setEnd(range.startContainer, endOffset)
               link = document.createElement('a')
@@ -213,7 +213,9 @@ class @AutoComplete
 
   getMenuPositioning: ->
     html = @getText()
-    startOffset = window.getSelection().getRangeAt(0).startOffset
+    selection = rangy.getSelection()
+    range = selection.getRangeAt(0)
+    startOffset = range.startOffset
 
     newHtml = [
       html.slice(0, @afterTokenPosition)
@@ -225,14 +227,11 @@ class @AutoComplete
     $afterToken = @$element.find('.-autocomplete-after-token')
     position = $afterToken.position()
 
-    parentNode = $afterToken.get(0).parentNode
+    previousSibling = $afterToken.get(0).previousSibling
     $afterToken.remove()
     @element.normalize()
-    range = document.createRange()
-    range.setStart(parentNode.firstChild, startOffset)
-    sel = window.getSelection()
-    sel.removeAllRanges()
-    sel.addRange(range)
+    range.setStart(previousSibling, startOffset)
+    selection.setSingleRange(range)
 
     if @position is "top"
       # Do some additional calculation to position menu from bottom
