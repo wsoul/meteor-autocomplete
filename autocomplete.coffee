@@ -70,6 +70,7 @@ class @AutoComplete
               range.setStart(link.firstChild, 1)
               range.setEnd(link.firstChild, 1)
               selection.setSingleRange(range)
+              @afterTokenPosition += @getCursorPosition() - startpos
 
             if @matched is -1
               @matched = i
