@@ -26,48 +26,64 @@ class @AutoComplete
 
   onKeyUp: (e) ->
     if e.keyCode isnt 27
-      startpos = @getCursorPosition() #@$element.getCursorPosition() # TODO: this doesn't seem to be correct on a focus
-      val = @getText().substring(0, startpos)
-      @tokenChanged = false
+      selection = rangy.getSelection()
+      if selection.isCollapsed and selection.rangeCount is 1
+        startpos = @getCursorPosition() #@$element.getCursorPosition() # TODO: this doesn't seem to be correct on a focus
+        html = @getText()
+        val = html.substring(0, startpos)
+        @tokenChanged = false
+        console.log startpos, val
+        ###
+          Matching on multiple expressions.
+          We always go from an matched state to an unmatched one
+          before going to a different matched one.
+        ###
+        i = 0
+        breakLoop = false
+        while i < @expressions.length
+          matches = val.match(@expressions[i])
 
-      ###
-        Matching on multiple expressions.
-        We always go from an matched state to an unmatched one
-        before going to a different matched one.
-      ###
-      i = 0
-      breakLoop = false
-      while i < @expressions.length
-        matches = val.match(@expressions[i])
-
-        # matching -> not matching
-        if not matches and @matched is i
-          @matched = -1
-          @ruleDep.changed()
-          breakLoop = true
-
-        # not matching -> matching
-        if matches
-          afterTokenPosition = val.lastIndexOf(@rules[i].token) + 1
-          if @afterTokenPosition isnt afterTokenPosition
-            @afterTokenPosition = afterTokenPosition
-            @tokenChanged = true
+          # matching -> not matching
+          if not matches and @matched is i
+            @matched = -1
             @ruleDep.changed()
             breakLoop = true
 
-          if @matched is -1
-            @matched = i
-            @ruleDep.changed()
-            breakLoop = true
+          # not matching -> matching
+          if matches
+            afterTokenPosition = val.lastIndexOf(@rules[i].token) + 1
+            if @afterTokenPosition isnt afterTokenPosition
+              @afterTokenPosition = afterTokenPosition
+              @tokenChanged = true
+              @ruleDep.changed()
+              breakLoop = true
 
-          # Did filter change?
-          if @filter isnt matches[2]
-            @filter = matches[2]
-            @filterDep.changed()
-            breakLoop = true
+            node = selection.focusNode.parentNode
+            if startpos is @afterTokenPosition and node.nodeName.toLowerCase() isnt 'a' # TODO: use rangy Range surroundContents
+              range = selection.getRangeAt(0)
+              endOffset = range.startOffset + node.innerHTML.substring(range.startOffset).search(/($|\<|\\s)/)
+              range.setStart(range.startContainer, range.startOffset - 1)
+              range.setEnd(range.startContainer, endOffset)
+              link = document.createElement('a')
+              link.href = '/search/' + encodeURIComponent(range.toString())
+              range.surroundContents(link)
+              range.setStart(link.firstChild, 1)
+              range.setEnd(link.firstChild, 1)
+              selection.setSingleRange(range)
 
-        break if breakLoop
-        i++
+            if @matched is -1
+              @matched = i
+              @ruleDep.changed()
+              breakLoop = true
+
+            # Did filter change?
+            if @filter isnt matches[2]
+              @filter = matches[2]
+              @filterDep.changed()
+              breakLoop = true
+
+          break if breakLoop
+          i++
 
   onKeyDown: (e) =>
     return if @matched is -1 or (@constructor.KEYS.indexOf(e.keyCode) < 0)
@@ -236,23 +252,20 @@ class @AutoComplete
       range = window.getSelection().getRangeAt(0)
       caretPosition = range.startOffset
 
-      container = range.startContainer
-      openTagLength = container.parentNode.outerHTML.indexOf(container.data)
-      if openTagLength > 0
-        caretPosition += openTagLength
-
       currentNode = window.getSelection().focusNode
       if currentNode isnt @element
         loop
           parentNode = currentNode.parentNode
           childNodes = parentNode.childNodes
-          for i in [0..childNodes.length]
-            if childNodes[i] is currentNode
+          for childNode in childNodes
+            if childNode is currentNode
+              if childNode.outerHTML
+                caretPosition += childNode.outerHTML.indexOf('>') + 1
               break
-            if childNodes[i].outerHTML
-              caretPosition += childNodes[i].outerHTML.length
-            else if childNodes[i].nodeType == 3
-              caretPosition += childNodes[i].textContent.length
+            else if childNode.outerHTML
+              caretPosition += childNode.outerHTML.length
+            else if childNode.nodeType == 3
+              caretPosition += childNode.textContent.length
           currentNode = parentNode
           break if parentNode is @element
     caretPosition
