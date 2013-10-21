@@ -61,7 +61,7 @@ class @AutoComplete
             parentNode = selection.focusNode.parentNode
             if startpos is @afterTokenPosition and parentNode.nodeName.toLowerCase() isnt 'a'
               range = selection.getRangeAt(0)
-              endOffset = range.startOffset + selection.focusNode.textContent.substring(range.startOffset).search(/($|\\s)/)
+              endOffset = range.startOffset + selection.focusNode.textContent.substring(range.startOffset).search(/($|\s)/)
               range.setStart(range.startContainer, range.startOffset - 1)
               range.setEnd(range.startContainer, endOffset)
               link = document.createElement('a')
@@ -227,6 +227,7 @@ class @AutoComplete
     @$element.html(newHtml)
     $afterToken = @$element.find('.-autocomplete-after-token')
     position = $afterToken.position()
+    lineHeight = $afterToken.outerHeight()
 
     previousSibling = $afterToken.get(0).previousSibling
     $afterToken.remove()
@@ -243,29 +244,28 @@ class @AutoComplete
     else
       return {
         left: position.left
-        top: position.top
+        top: position.top + lineHeight
       }
 
   getCursorPosition: () ->
     caretPosition = 0
-    if window.getSelection && window.getSelection().getRangeAt
-      range = window.getSelection().getRangeAt(0)
-      caretPosition = range.startOffset
+    range = rangy.getSelection().getRangeAt(0)
+    caretPosition = range.startOffset
 
-      currentNode = window.getSelection().focusNode
-      if currentNode isnt @element
-        loop
-          parentNode = currentNode.parentNode
-          childNodes = parentNode.childNodes
-          for childNode in childNodes
-            if childNode is currentNode
-              if childNode.outerHTML
-                caretPosition += childNode.outerHTML.indexOf('>') + 1
-              break
-            else if childNode.outerHTML
-              caretPosition += childNode.outerHTML.length
-            else if childNode.nodeType == 3
-              caretPosition += childNode.textContent.length
-          currentNode = parentNode
-          break if parentNode is @element
+    currentNode = range.startContainer
+    if currentNode isnt @element
+      loop
+        parentNode = currentNode.parentNode
+        childNodes = parentNode.childNodes
+        for childNode in childNodes
+          if childNode is currentNode
+            if childNode.outerHTML
+              caretPosition += childNode.outerHTML.indexOf('>') + 1
+            break
+          else if childNode.outerHTML
+            caretPosition += childNode.outerHTML.length
+          else if childNode.nodeType == 3
+            caretPosition += childNode.textContent.length
+        currentNode = parentNode
+        break if parentNode is @element
     caretPosition
